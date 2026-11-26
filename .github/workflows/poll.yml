@@ -34,4 +34,4 @@ jobs:
           git -C data config user.email "flights-bot@users.noreply.github.com"
 
       - name: Consultar vuelos
-        run: python3 poll.py
+        run: python3 -u poll.py
