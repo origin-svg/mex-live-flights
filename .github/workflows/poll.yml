@@ -1,0 +1,37 @@
+name: Poll MEX flights
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: poll-mex
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar rama data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$REMOTE" data >/dev/null 2>&1; then
+            git clone --depth 1 --branch data "$REMOTE" data
+          else
+            git init -q -b data data
+            git -C data remote add origin "$REMOTE"
+          fi
+          git -C data config user.name "flights-bot"
+          git -C data config user.email "flights-bot@users.noreply.github.com"
+
+      - name: Consultar vuelos
+        run: python3 poll.py
