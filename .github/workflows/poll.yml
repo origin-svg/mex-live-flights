@@ -33,7 +33,7 @@ jobs:
           git -C data config user.name "flights-bot"
           git -C data config user.email "flights-bot@users.noreply.github.com"
 
-            - name: Consultar vuelos
+      - name: Consultar vuelos
         env:
           DURATION_S: "21000"
         run: python3 -u poll.py
