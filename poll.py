@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Consulta aviones cerca de MEX (MMMX) en feeds ADS-B comunitarios y publica
-latest.json + history.json en la rama `data` (un solo commit, se sobrescribe)."""
+"""Consulta aviones cerca de MEX (MMMX) en feeds ADS-B comunitarios, los imprime
+en el log en cada consulta y publica latest.json + history.json en la rama `data`
+(un solo commit, se sobrescribe)."""
 import json, os, subprocess, sys, time, urllib.request
 from datetime import datetime, timezone
 
@@ -13,6 +14,7 @@ PUSH_EVERY = int(os.environ.get("PUSH_EVERY", "3"))   # publicar cada N consulta
 MAX_HISTORY = int(os.environ.get("MAX_HISTORY", "90"))
 DATA_DIR = os.environ.get("DATA_DIR", "data")
 PUSH = os.environ.get("PUSH", "1") == "1"
+PRINT_MAX = int(os.environ.get("PRINT_MAX", "60"))
 UA = "mex-flights-relay (GitHub Actions; 1 req/%ss)" % INTERVAL_S
 
 SOURCES = [
@@ -61,7 +63,7 @@ def snapshot():
             return name, ac
         except Exception as e:  # noqa
             last_err = "%s: %s" % (name, e)
-            print("fuente fallo ->", last_err, file=sys.stderr)
+            print("fuente fallo ->", last_err, file=sys.stderr, flush=True)
     raise RuntimeError(last_err or "sin fuentes")
 
 
@@ -89,6 +91,17 @@ def write_files(source, ac, history):
                    "snapshots": history}, f, separators=(",", ":"))
 
 
+def print_table(source, ac):
+    stamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    print("=== %s UTC | %s | %d aviones ===" % (stamp, source, len(ac)), flush=True)
+    for a in sorted(ac, key=lambda x: -(x["alt_ft"] or 0))[:PRINT_MAX]:
+        nombre = a["callsign"] or a["hex"]
+        tierra = "  [tierra]" if a["on_ground"] else ""
+        print(f"{nombre:<8} {(a['type'] or '-'):<5} alt {str(a['alt_ft']):>6} ft  "
+              f"{str(a['gs_kt']):>4} kt  rumbo {str(a['track']):>5}  "
+              f"{a['lat']:.3f},{a['lon']:.3f}{tierra}", flush=True)
+
+
 def git(*args):
     return subprocess.run(["git", "-C", DATA_DIR, *args], check=True,
                           capture_output=True, text=True).stdout.strip()
@@ -99,7 +112,7 @@ def push():
     tree = git("write-tree")
     commit = git("commit-tree", tree, "-m", "snapshot")   # commit huerfano: el repo no crece
     git("push", "--force", "origin", "%s:refs/heads/data" % commit)
-    print("publicado", commit[:7])
+    print("publicado", commit[:7], flush=True)
 
 
 def main():
@@ -112,15 +125,15 @@ def main():
             source, ac = snapshot()
             write_files(source, ac, hist)
             ok += 1
-            print("%s: %d aviones (%s)" % (datetime.now(timezone.utc).strftime("%H:%M:%S"), len(ac), source))
+            print_table(source, ac)
         except Exception as e:  # noqa
-            print("consulta fallo:", e, file=sys.stderr)
+            print("consulta fallo:", e, file=sys.stderr, flush=True)
         n += 1
         if PUSH and ok and n % PUSH_EVERY == 0:
             try:
                 push()
             except Exception as e:  # noqa
-                print("push fallo:", e, file=sys.stderr)
+                print("push fallo:", e, file=sys.stderr, flush=True)
         if time.time() - start + INTERVAL_S > DURATION_S:
             break
         time.sleep(INTERVAL_S)
